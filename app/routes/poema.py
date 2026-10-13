@@ -22,7 +22,7 @@ class CreatePoemaRequest(BaseModel):
 
 
 class PoemaResponse(BaseModel):
-    id: str
+    id: int
     titulo: str  
     autor: str | None
     texto: str
@@ -30,31 +30,53 @@ class PoemaResponse(BaseModel):
     voz: str
     velocidad: float
     estado: str
-    creado_en: str
+    creado_en: datetime
 
 
 @router.post("/", response_model=PoemaResponse, status_code=201)
-async def crear_poema(request: CreatePoemaRequest, db: Session = Depends(get_db)):
+async def crear_poema(request: CreatePoemaRequest, db: Session = Depends(get_db), background_tasks: BackgroundTasks = None):
     try:
         if len(request.texto) > 10000:
             raise HTTPException(status_code=400, detail="Texto máximo 10,000 caracteres")
         
-        poem_id = f"{datetime.now().strftime('%Y%m%d')}{uuid.uuid4().hex[:4]}"
-        
-        db.add(Poema(
-            id=poem_id,
+        nuevo_poema = Poema(
             titulo=request.titulo,
             autor=request.autor or "",
             texto=request.texto,
             voz=request.voz or "es_ES-davefx-medium",
             velocidad=float(request.velocidad) if hasattr(request, 'velocidad') else request.velocidad,
             estado="pending"
-        ))
+        )
+        
+        db.add(nuevo_poema)
+        db.commit()
+        db.refresh(nuevo_poema)
+        
+        from app.tasks import generate_audio_for_poem
+        
+        if background_tasks is None:
+            from fastapi import BackgroundTasks
+            background_tasks = BackgroundTasks()
+        
+        ruta_relativa = f"/audio/poema_{nuevo_poema.id}.mp3"
+        
+        background_tasks.add_task(
+            generate_audio_for_poem,
+            nuevo_poema.id,
+            request.texto,
+            request.voz or "es_ES-davefx-medium",
+            float(request.velocidad) if hasattr(request, 'velocidad') else request.velocidad,
+            ruta_relativa
+        )
+        
+        # Actualizar estado a generando
+        nuevo_poema.estado = "generando"
         db.commit()
         
-        poem = db.query(Poema).filter(Poema.id == poem_id).first()
-        return PoemaResponse(**poem.__dict__)
+        return PoemaResponse(**nuevo_poema.__dict__)
     except Exception as e:
+        if db:
+            db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
 

@@ -210,6 +210,33 @@ def add_silence_to_end(wav_data, sample_rate, duration_ms):
     return bytes(wav_data) + silence_bytes
 
 
+def merge_single_to_mp3(wav_path):
+    """Convierte un único WAV a MP3 usando ffmpeg."""
+    import subprocess
+    from pathlib import Path
+    
+    # Convertir string a Path si es necesario
+    if isinstance(wav_path, str):
+        wav_path = Path(wav_path)
+    
+    output_mp3 = wav_path.with_suffix('.mp3')
+    
+    cmd = [
+        "ffmpeg", "-y",
+        "-i", str(wav_path),
+        "-ar", "24000",  # 24kHz suficiente para TTS
+        "-acodec", "mp3",
+        str(output_mp3)
+    ]
+    
+    result = subprocess.run(cmd, capture_output=True)
+    
+    if result.returncode != 0:
+        error_msg = result.stderr.decode('utf-8', errors='ignore')
+        raise RuntimeError(f"ffmpeg error: {error_msg[:200]}")
+    
+    return str(output_mp3)
+
 def convert_to_mono_pcm16_44khz(input_path):
     """Convierte cualquier WAV a mono PCM 16bit 44kHz."""
     import subprocess
@@ -255,77 +282,140 @@ def convert_to_mp3_with_ffmpeg(wav_path, mp3_path):
 
 def generate_audio_for_poem(poema_id, texto, voice_id, speed):
     """
-    Genera audio para un poema completo.
+    Genera audio para un poema usando subprocess con Piper CLI.
     
     Args:
         poema_id: ID del poema en BD (para naming)
-        texto: Texto normalizado
-        voice_id: ID de la voz a usar  
+        texto: Texto normalizado  
+        voice_id: ID de la voz a usar
         speed: factor de velocidad 0.8-1.2
-    
+
     Returns:
-        Ruta al MP3 generado o None si falla
+        Ruta relativa al MP3 generado o None si falla
     """
-    from piper_tts import OnnxTTS
+    import wave
+    import tempfile
+    from pathlib import Path
     
-    # Normalizar texto
-    texto = normalize_text_poem(texto)
-    
-    if not texto.strip():
-        print("❌ Texto vacío")
-        return None
-    
-    # Listar voces disponibles y validar
-    tts = PiperTextToSpeech()
-    voices = tts.list_voices()
-    
-    if not voices:
-        raise RuntimeError("No hay voces TTS configuradas")
-    
-    voice_name = voice_id or voices[0]['name']
-    
-    print(f"📝 Generando audio para {len(split_into_verses(texto))} versos...")
+    # Abrir propia sesión de DB con SQLAlchemy directo
+    from sqlalchemy import create_engine, text
+    engine = create_engine("sqlite:///./poems.db", connect_args={"check_same_thread": False})
     
     try:
-        # Sintetizar cada verso por separado (más control sobre pausas)
-        fragments = []
-        verses = split_into_verses(texto)
-        
-        print(f"   Sintetizando {len(verses)} fragmentos...")
-        
-        for i, verso in enumerate(verses):
-            if not verso.strip():
-                continue
+        with engine.connect() as conn:
+            conn.execute(text(f"UPDATE poemas SET estado='generando' WHERE id={poema_id}"))
+            conn.commit()
             
-            # Ajustar velocidad con --length-scale
-            length_scale = 0.95 + (speed * 0.2)  # mapeo aproximado de 0.8-1.2 a 0.87-1.25
+            # Normalizar texto
+            texto = normalize_text_poem(texto)
             
-            result_path = tts.synthesize(verso, voice_name, length_scale)
+            if not texto.strip():
+                with engine.connect() as conn:
+                    conn.execute(text("UPDATE poems SET estado='error' WHERE id=?"), {"id": poema_id})
+                    conn.commit()
+                print("❌ Texto vacío")
+                return None
             
-            if result_path and os.path.exists(result_path):
-                fragments.append(result_path)
-                print(f"   Verso {i+1}/{len(verses)}: OK ({os.path.getsize(result_path)} bytes)")
-        
-        if not fragments:
-            raise RuntimeError("No se generaron fragmentos de audio")
-        
-        # Unir todos los fragmentos
-        final_mp3 = merge_audio_fragments(fragments, f"poema_{poema_id}")
-        
-        if final_mp3 and os.path.exists(final_mp3):
-            print(f"✅ Audio final: {final_mp3} ({os.path.getsize(final_mp3)} bytes)")
-            return final_mp3
-        
-        raise RuntimeError("No se pudo generar archivo MP3 final")
-        
-    except Exception as e:
-        import traceback
-        print(f"❌ Error generando audio: {e}")
-        traceback.print_exc()
-        return None
-
-
-# Necesitamos imports al inicio de la función
-    # Add at top if needed - for now assume it's there
-    pass
+            # Listar voces disponibles y validar
+            tts = PiperTextToSpeech()
+            voices = tts.list_voices()
+            
+            if not voices:
+                raise RuntimeError("No hay voces TTS configuradas")
+            
+            voice_name = voice_id or voices[0]['name']
+            model_path = f"{tts.model_dir}/{voice_name}.onnx"
+            
+            print(f"📝 Generando audio con voz {voice_name}...")
+            
+            # Crear directorio de audio
+            audio_dir = Path("/home/awiwa/Documentos/GitHub/Prueba/poemtoaudio/audio")
+            audio_dir.mkdir(parents=True, exist_ok=True)
+            
+            final_mp3_path = None
+            
+            try:
+                # Sintetizar cada verso por separado
+                fragments = []  # [(wav_path, txt_path), ...]
+                verses = split_into_verses(texto)
+                
+                print(f"   Sintetizando {len(verses)} fragmentos...")
+                
+                for idx, verso in enumerate(verses):
+                    if not verso.strip():
+                        continue
+                    
+                    # Ajustar velocidad con --length-scale
+                    length_scale = 0.95 + (speed * 0.2)
+                    
+                    input_txt = tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False, encoding='utf-8')
+                    input_txt.write(verso)
+                    input_txt.close()
+                    
+                    output_wav = tempfile.mktemp(suffix='.wav')
+                    
+                    # Comando Piper CLI vía subprocess
+                    cmd = [
+                        sys.executable, "-m", "piper",
+                        "-m", model_path,
+                        "-i", input_txt.name,
+                        "-f", output_wav,
+                        "--length-scale", str(length_scale)
+                    ]
+                    
+                    result = subprocess.run(cmd, capture_output=True, timeout=60)
+                    
+                    if result.returncode != 0:
+                        raise RuntimeError(f"Error Piper verso {idx+1}: {result.stderr.decode('utf-8', errors='ignore')}")
+                    
+                    if not os.path.exists(output_wav):
+                        raise RuntimeError(f"WAV no generado para verso {idx+1}")
+                    
+                    print(f"   Verso {idx+1}/{len(verses)}: OK ({os.path.getsize(output_wav)} bytes)")
+                    fragments.append((output_wav, input_txt.name))
+                
+                if not fragments:
+                    raise RuntimeError("No se generaron fragmentos de audio")
+                
+                # Unir todos los fragmentos con merge_audio_fragments
+                final_mp3_path = merge_audio_fragments(
+                    [f[0] for f in fragments], 
+                    f"poema_{poema_id}",
+                    input_files=[f[1] for f in fragments]
+                )
+                
+                if not final_mp3_path or not os.path.exists(final_mp3_path):
+                    raise RuntimeError("No se pudo generar archivo MP3 final")
+                
+                print(f"✅ Audio generado: {final_mp3_path}")
+                
+                # Actualizar estado a listo en DB y guardar ruta
+                ruta_rel = f"/audio/poema_{poema_id}.mp3"
+                with engine.connect() as conn:
+                    conn.execute(text(f"UPDATE poemas SET estado='listo', ruta_audio='{ruta_rel}' WHERE id={poema_id}"))
+                    conn.commit()
+                
+                return ruta_rel
+                
+            except Exception as e:
+                import traceback
+                print(f"❌ Error generando audio: {e}")
+                traceback.print_exc()
+                
+                # Actualizar estado a error en DB
+                with engine.connect() as conn:
+                    conn.execute(text("UPDATE poems SET estado='error' WHERE id=?"), {"id": poema_id})
+                    conn.commit()
+                
+                return None
+    
+    finally:
+        # Limpiar archivos temporales WAV y TXT
+        for wav_path, txt_path in fragments if 'fragments' in dir() else []:
+            try:
+                os.unlink(wav_path)
+                if txt_path and os.path.exists(txt_path):
+                    os.unlink(txt_path)
+            except:
+                pass
 
