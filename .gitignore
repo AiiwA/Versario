@@ -1,0 +1,55 @@
+# Python virtual environment
+venv/
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+
+# SQLite database (local development)
+poemas.db
+*.db
+
+# TTS models - EXCLUSIVELY HUGGINGFACE CACHE, NO SOURCE MODEL FILES
+tts_models/*/model.onnx*
+tts_models/.*.pt
+tts_models/vocabulary.json
+huggingface-hub/
+.huggingface/
+
+# Generated audio output
+audio/*.mp3
+/tmp/verso*.wav
+/tmp/verso*.mp3
+
+# IDE / Editor files
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log
+npm-debug.log*
+yarn-error.log*
+
+# Environment variables
+.env
+.env.local
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Testing
+.coverage
+coverage.xml
+.pytest_cache/
+htmlcov/
+
+# Secrets / credentials
+secrets.txt
+credentials.json

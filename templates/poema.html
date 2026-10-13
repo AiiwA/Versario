@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>{{ poema.titulo }} - Versario</title>
+    
+    <!-- Estilos CSS -->
+    <link rel="stylesheet" href="/static/css/style.css">
+    
+    <!-- Meta tags adicionales -->
+    <meta name="description" content="{{ poema.texto[:150] if poema.texto else '' }}">
+</head>
+<body class="poema-body">
+    <!-- Encabezado -->
+    <header class="header">
+        <div class="back-btn-container">
+            <button id="backToHomeBtn" class="btn btn-back" onclick="window.location.href='/'">
+                ← Volver a la lista
+            </button>
+        </div>
+        <h1>{{ poema.titulo }}</h1>
+        
+        <!-- Autor (si existe) -->
+        {% if poema.autor %}
+        <p class="autor"><strong>— {{ poema.autor }}</strong></p>
+        {% endif %}
+    </header>
+
+    <!-- Estado de generación -->
+    <div id="generationStatus" class="status-badge hidden">
+        <span class="status-icon"></span>
+        <span class="status-text">{{ poema.estado|title }}</span>
+    </div>
+
+    <!-- Contenido del poema (tipografía elegante) -->
+    <section class="poem-content">
+        <article class="poem-text" id="poemText">
+            {{ poema.texto }}
+        </article>
+    </section>
+
+    <!-- Reproductor de audio -->
+    <section class="audio-player-section">
+        <h2>Reproducir audio</h2>
+        
+        <div class="player-container">
+            
+            <!-- Botones de control -->
+            <div class="player-controls">
+                
+                <!-- Reproducir/Pausar -->
+                <button id="playBtn" class="btn btn-play">
+                    <span class="icon">▶️</span>
+                    <span class="label">Reproducir</span>
+                </button>
+                
+                <!-- Volumen -->
+                <div class="volume-control">
+                    <button id="muteBtn" class="btn btn-small">🔊</button>
+                    <input type="range" id="volumeSlider" min="0" max="100" value="100">
+                    <span id="volumeValue">100%</span>
+                </div>
+                
+                <!-- Bajar calidad para móvil -->
+                <button id="qualityBtn" class="btn btn-small hidden-mobile">📱 Calidad</button>
+            </div>
+
+            <!-- Audio element con source MP3 -->
+            <audio id="audioPlayer">
+                <source src="{{ poema.ruta_audio }}" type="audio/mpeg">
+                Tu navegador no soporta el elemento de audio.
+            </audio>
+
+            <!-- Información del reproductor -->
+            <div class="player-info">
+                
+                <!-- Tiempo actual / duración (si disponible) -->
+                <span id="currentTime" class="time-display">0:00</span>
+                <span id="durationDisplay" class="time-display hidden">0:00</span>
+                
+                <!-- Barra de progreso -->
+                <div class="progress-container">
+                    <div class="progress-bar">
+                        <div class="progress-fill" id="progressFill"></div>
+                    </div>
+                </div>
+
+                <!-- Tiempo restante (cálculo) -->
+                <span id="timeRemaining" class="time-display">--:--</span>
+            </div>
+
+        </div>
+    </section>
+
+    <!-- Botón de descargar -->
+    {% if poema.ruta_audio %}
+    <section class="download-section">
+        <button id="downloadBtn" class="btn btn-download">
+            📥 Descargar audio ({{ poema.voz }})
+        </button>
+    </section>
+    {% else %}
+    <!-- Mensaje si no hay audio generado -->
+    <div id="noAudioMessage" class="info-box">
+        <p>🔊 El audio está pendiente de generación</p>
+        <p class="info-subtext">Puedes volver a la lista e intentar otra vez</p>
+    </div>
+    {% endif %}
+
+    <!-- Modal de error -->
+    <div id="errorModal" class="modal hidden">
+        <div class="modal-content">
+            <h3>⚠️ Error</h3>
+            <p id="errorMessage"></p>
+            <button class="btn btn-primary" onclick="closeError()">Cerrar</button>
+        </div>
+    </div>
+
+    <!-- Scripts JavaScript -->
+    <script src="/static/js/app.js"></script>
+    <script>
+        // Datos del poema (pasados desde el backend)
+        window.poemaData = {
+            id: "{{ poema.id }}",
+            titulo: "{{ poema.titulo }}",
+            autor: "{{ poema.autor }}",
+            texto: "{{ poema.texto|e }}",
+            voz: "{{ poema.voz }}",
+            velocidad: {{ poema.velocidad }},
+            estado: "{{ poema.estado }}",
+            audioPath: "{{ poema.ruta_audio }}",
+            creadoEn: "{{ poem.creado_en }}"
+        };
+    </script>
+</body>
+</html>
