@@ -2,11 +2,11 @@
 Modelos SQLAlchemy para Versario.
 Define la entidad Poema con sus campos y relaciones.
 """
-from datetime import datetime
+from datetime import datetime, timezone
 from sqlalchemy import Column, Integer, String, Text, Float, DateTime, ForeignKey, Boolean
-from sqlalchemy.orm import relationship
+from sqlalchemy.orm import relationship, declarative_base
 
-from .database import Base
+Base = declarative_base()
 
 
 class Poema(Base):
@@ -18,14 +18,11 @@ class Poema(Base):
     - titulo: título del poema (obligatorio)
     - autor: nombre del autor (opcional)
     - texto: contenido completo del poema (obligatorio)
-    - ruta_audio: ruta relativa al archivo MP3 generado
+    - ruta_audio: ruta al archivo MP3 generado
     - voz: ID de la voz TTS usada
     - velocidad: factor de velocidad (0.8x a 1.2x)
     - estado: pendiente/generando/listo/error
     - creado_en: timestamp de creación
-    
-    Relaciones:
-    - audios: historial de intentos de generación de audio
     """
     __tablename__ = "poemas"
 
@@ -35,7 +32,7 @@ class Poema(Base):
     autor = Column(String(200), nullable=True)  # Opcional
     texto = Column(Text, nullable=False)
     
-    # Referencia al archivo de audio generado
+    # Referencia al archivo de audio generado (ruta relativa)
     ruta_audio = Column(String(500), nullable=True)
     
     # Configuración del audio
@@ -43,33 +40,24 @@ class Poema(Base):
     velocidad = Column(Float, default=1.0)  # Factor de velocidad (0.8 - 1.2)
     
     # Estado de la generación
-    estado = Column(
-        String(20), 
-        default="pendiente",
-        nullable=False
-    )  # pendiente | generando | listo | error
+    estado = Column(String(20), default="pendiente", nullable=False)  # pendiente | generando | listo | error
     
     # Timestamps
-    creado_en = Column(DateTime, default=datetime.utcnow)
-    actualizado_en = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    creado_en = Column(DateTime, default=lambda: datetime.now(timezone.utc))
 
-    # Relación histórica (no usada en este ejemplo simple)
-    # audios = relationship("AudioGeneracion", back_populates="poema", cascade="all, delete-orphan")
-
-    def __repr__(self):
-        return f"<Poema(id={self.id}, titulo='{self.titulo[:30]}...', estado='{self.estado}')>"
-    
     def to_dict(self):
         """Convierte el poema a diccionario para JSON responses."""
         return {
             "id": self.id,
             "titulo": self.titulo,
             "autor": self.autor,
-            "texto": self.texto[:500] + "..." if len(self.texto) > 500 else self.texto,
+            "texto": self.texto,
             "ruta_audio": self.ruta_audio,
             "voz": self.voz,
             "velocidad": self.velocidad,
             "estado": self.estado,
-            "creado_en": self.creado_en.isoformat(),
-            "actualizado_en": self.actualizado_en.isoformat() if self.actualizado_en else None
+            "creado_en": self.creado_en.isoformat() if self.creado_en else None
         }
+
+    def __repr__(self):
+        return f"<Poema(id={self.id}, titulo='{self.titulo[:30]}...', estado='{self.estado}')>"

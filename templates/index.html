@@ -3,154 +3,65 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Versario - Generador de audio para poemas</title>
-    
-    <!-- Estilos CSS -->
+    <title>Versario - Generador de Poemas Audio</title>
     <link rel="stylesheet" href="/static/css/style.css">
-    
-    <!-- Meta tags adicionales -->
-    <meta name="description" content="Convierte tus poemas en audio narrado con IA. Versario genera audio de alta calidad para tus creaciones poéticas.">
-    <meta name="theme-color" content="#1a1a2e">
 </head>
 <body>
-    <!-- Contenedor principal -->
     <div class="container">
-        
-        <!-- Encabezado -->
-        <header class="header">
-            <h1>📖 Versario</h1>
-            <p class="subtitle">Convierte tus poemas en audio narrado</p>
+        <header>
+            <h1>🎵 Versario</h1>
+            <p>Convierte tus poemas en audio con síntesis de voz</p>
         </header>
 
-        <!-- Formulario de creación de poema -->
-        <section class="create-form" id="createForm">
-            <form id="poemForm">
-                
-                <!-- Título del poema -->
-                <div class="form-group">
-                    <label for="titulo">Título del poema *</label>
-                    <input 
-                        type="text" 
-                        id="titulo" 
-                        name="titulo" 
-                        placeholder="Ej: Soneto del Alba"
-                        required
-                        minlength="1"
-                        maxlength="200"
-                        autocomplete="off"
-                    >
-                </div>
-
-                <!-- Autor (opcional) -->
-                <div class="form-group">
-                    <label for="autor">Autor</label>
-                    <input 
-                        type="text" 
-                        id="autor" 
-                        name="autor" 
-                        placeholder="Ej: R. L. Stevenson"
-                        maxlength="200"
-                        autocomplete="off"
-                    >
-                </div>
-
-                <!-- Selector de voz -->
-                <div class="form-group">
-                    <label for="voz">Voz TTS</label>
-                    <select id="voz" name="voz" required>
-                        <option value="" disabled selected>Selecciona una voz...</option>
-                        <!-- Las voces se cargan dinámicamente -->
-                    </select>
-                </div>
-
-                <!-- Control de velocidad -->
-                <div class="form-group">
-                    <label for="velocidad">Velocidad: <span id="velocidadValue">1.0x</span></label>
-                    <input 
-                        type="range" 
-                        id="velocidad" 
-                        name="velocidad" 
-                        min="0.8" 
-                        max="1.2" 
-                        step="0.1" 
-                        value="1.0"
-                        class="range-slider"
-                    >
-                    <div class="speed-labels">
-                        <span>0.8x</span>
-                        <span>1.0x</span>
-                        <span>1.2x</span>
+        <main>
+            <!-- Formulario crear poema -->
+            <section class="poem-form">
+                <h2>Nuevo Poema</h2>
+                <form id="poemForm" class="poem-form__form">
+                    <div class="form-group">
+                        <label for="titulo">Título:</label>
+                        <input type="text" id="titulo" name="titulo" required 
+                               placeholder="Ej: Mi Primer Poema">
                     </div>
-                </div>
 
-                <!-- Textarea del poema -->
-                <div class="form-group textarea-group">
-                    <label for="texto">Texto del poema *</label>
-                    <p class="hint">Pega aquí tu poema (máx. 10,000 caracteres)</p>
-                    <textarea 
-                        id="texto" 
-                        name="texto" 
-                        placeholder="Era noche oscura y tranquila...&#10;&#10;El viento susurraba en las ramas..."
-                        required
-                        minlength="1"
-                        maxlength="10000"
-                        rows="8"
-                    ></textarea>
-                </div>
+                    <div class="form-group">
+                        <label for="autor">Autor (opcional):</label>
+                        <input type="text" id="autor" name="autor" 
+                               placeholder="Tu nombre">
+                    </div>
 
-                <!-- Botón de subir -->
-                <button type="submit" class="btn btn-primary btn-large">
-                    📤 Subir poema y generar audio
-                </button>
-            </form>
-        </section>
+                    <div class="form-group">
+                        <label for="texto">Texto del poema:</label>
+                        <textarea id="texto" name="texto" rows="6" required 
+                                  placeholder="Escribe tu poema aquí...&#10;&#10;Recuerda: Usa doble salto de línea (&#10;&#10;) para separar estrofas.&#10;Cada línea no vacía será un verso separado."
+                                maxlength="10000"></textarea>
+                        <small id="textoCounter" class="form-counter">0/10000 caracteres</small>
+                    </div>
 
-        <!-- Sección de lista de poemas (oculta inicialmente) -->
-        <section class="poems-list hidden" id="poemsList">
-            <div class="list-header">
-                <h2>Tus Poemas</h2>
-                
-                <!-- Mostrar botón nuevo poema -->
-                <button id="backToCreateBtn" class="btn btn-secondary">
-                    ✏️ Crear otro poema
-                </button>
-            </div>
+                    <div class="form-group">
+                        <label for="velocidad">Velocidad:</label>
+                        <input type="number" id="velocidad" name="velocidad" 
+                               min="0.8" max="1.2" step="0.1" value="1.0" required>
+                        <small>Nivel: normal</small>
+                    </div>
 
-            <!-- Contenedor de lista (se llena dinámicamente) -->
-            <div id="poemsContainer"></div>
+                    <div class="form-group">
+                        <label for="voz">Voz:</label>
+                        <select id="voz" name="voz" required>
+                            <!-- Se llena con JS -->
+                        </select>
+                    </div>
 
-            <!-- Mensaje cuando no hay poemas -->
-            <div id="emptyState" class="empty-state">
-                <div class="empty-icon">📜</div>
-                <p>Aún no tienes poemas guardados</p>
-                <p class="empty-subtext">Sube tu primer poema para comenzar</p>
-            </div>
+                    <button type="submit" class="btn btn-primary">Crear Poema</button>
+                </form>
+            </section>
+        </main>
 
-            <!-- Paginación -->
-            <div id="pagination" class="pagination hidden"></div>
-        </section>
-
+        <footer>
+            <p>&copy; 2026 Versario - Generador de Poemas Audio con Piper TTS</p>
+        </footer>
     </div>
 
-    <!-- Modal de error -->
-    <div id="errorModal" class="modal hidden">
-        <div class="modal-content">
-            <h3>⚠️ Error</h3>
-            <p id="errorMessage"></p>
-            <button class="btn btn-primary" onclick="closeError()">Cerrar</button>
-        </div>
-    </div>
-
-    <!-- Modal de éxito -->
-    <div id="successModal" class="modal hidden">
-        <div class="modal-content success-modal">
-            <h3>✅ Éxito</h3>
-            <p id="successMessage"></p>
-            <button class="btn btn-primary" onclick="closeSuccess()">Listo</button>
-        </div>
-    </div>
-
-    <!-- Scripts JavaScript -->
     <script src="/static/js/app.js"></script>
 </body>
 </html>

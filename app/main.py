@@ -3,6 +3,7 @@ import os
 from fastapi import FastAPI, Depends, HTTPException, Request
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+from sqlalchemy.orm import Session
 
 # Absolute imports from project root (for uvicorn run)
 from app.database import get_db, init_database
@@ -14,43 +15,15 @@ app = FastAPI(
     version="1.0.0"
 )
 
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
+# Montar carpeta de estáticos (si existe)
+static_dir = os.path.join(os.path.dirname(__file__), "..", "static")
+if os.path.exists(static_dir):
+    app.mount("/static", StaticFiles(directory=static_dir), name="static")
+
+templates = Jinja2Templates(directory=os.path.join(os.path.dirname(__file__), "..", "templates"))
 
 
-def get_tts_provider():
-    """Obtiene el proveedor de síntesis de voz configurado."""
-    from app.tts.piper_provider import PiperTextToSpeech
-    model_dir = os.getenv("PIPER_MODELS_DIR", "./tts_models")
-    
-    try:
-        tts = PiperTextToSpeech(model_path=model_dir)
-        print(f"✅ TTS Provider inicializado: Piper ({model_dir})")
-        return tts
-    except Exception as e:
-        print(f"⚠️ Error inicializando TTS: {e}")
-        raise
-
-
-@app.on_event("startup")
-async def startup_event():
-    """Ejecuta al iniciar la aplicación."""
-    init_database()
-    
-    tts = get_tts_provider()
-    
-    if not hasattr(app, 'state'):
-        app.state = {}
-    app.state['tts'] = tts
-    
-    from app.tasks import check_ffmpeg
-    try:
-        check_ffmpeg()
-    except SystemExit as e:
-        raise RuntimeError("Error de configuración: ffmpeg no disponible")
-
-
-def get_poema_db(db):
+def get_poema_db(db: Session = Depends(get_db)):
     """Dependencia para obtener sesión DB con modelo Poema."""
     return db
 
@@ -62,16 +35,17 @@ async def health_check():
 
 
 @app.get("/api/voices", tags=["TTS"])
-async def list_available_voices():
+async def list_available_voices(db: Session = Depends(get_poema_db)):
     """Lista todas las voces disponibles en el sistema TTS."""
-    if not hasattr(app.state, 'tts'):
-        raise HTTPException(status_code=503, detail="Servicio de voz no disponible")
+    from app.tts.piper_provider import PiperTextToSpeech
     
-    voices = app.state['tts'].list_voices()
-    return voices
+    try:
+        tts = PiperTextToSpeech()
+        voices = tts.list_voices()
+        return voices
+    except Exception as e:
+        raise HTTPException(status_code=503, detail=f"Error listando voces: {e}")
 
-
-app.include_router(poema_router, prefix="/api/poemas", tags=["Poemas"])
 
 @app.get("/", response_class=None)
 async def root(request: Request):
@@ -80,7 +54,7 @@ async def root(request: Request):
 
 
 @app.get("/poema/{poema_id}")
-async def poema_detail(request: Request, poema_id: str, db = Depends(get_poema_db)):
+async def poema_detail(request: Request, poema_id: int, db = Depends(get_poema_db)):
     """Renderiza el detalle de un poema con reproductor."""
     from app.models import Poema
     
@@ -91,17 +65,11 @@ async def poema_detail(request: Request, poema_id: str, db = Depends(get_poema_d
     
     return templates.TemplateResponse("poema.html", {
         "request": request,
-        "poema": poem.to_dict() if hasattr(poema, 'to_dict') else poem.__dict__
+        "poema": poem.to_dict() if hasattr(poem, 'to_dict') else poem.__dict__
     })
 
 
-if __name__ == "__main__":
-    import uvicorn
-    
-    try:
-        get_tts_provider()
-        print("⚠️  TTS no está configurado. Verifica modelos en tts_models/piper/")
-    except Exception:
-        pass
-    
-    uvicorn.run(app, host="0.0.0.0", port=8765, reload=False)
+# Incluir rutas API
+from app.routes import poema_router
+app.include_router(poema_router, prefix="/api/poemas", tags=["Poemas"])
+
