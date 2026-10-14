@@ -1,1 +1,0 @@
-"""Versario - Application package."""

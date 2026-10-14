@@ -53,3 +53,8 @@ htmlcov/
 # Secrets / credentials
 secrets.txt
 credentials.json
+
+# Node / React
+node_modules/
+dist/
+.aistudio/

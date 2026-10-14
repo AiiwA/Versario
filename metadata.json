@@ -1,0 +1,5 @@
+{
+  "name": "Versario - Generador de Poemas Audio",
+  "description": "Convierte tus poemas en audio con síntesis de voz, pausas poéticas entre estrofas y versos, y reproductor integrado.",
+  "capabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
