@@ -1,4 +1,5 @@
 import React, { useState, useEffect } from 'react';
+import { Feather } from 'lucide-react';
 import { CreatePoemaDTO, VoiceOption } from '../types/poema';
 import { SAMPLE_POEMS } from '../utils/samplePoems';
 import { getAvailableVoices } from '../services/speechService';
@@ -11,11 +12,9 @@ interface PoemFormProps {
   onError: (msg: string) => void;
 }
 
-export const PoemForm: React.FC<PoemFormProps> = ({
-  onSubmit,
-  isSubmitting = false,
-  onError,
-}) => {
+const label = 'mb-2 block text-sm font-medium text-muted';
+
+export const PoemForm: React.FC<PoemFormProps> = ({ onSubmit, isSubmitting = false, onError }) => {
   const [titulo, setTitulo] = useState('');
   const [autor, setAutor] = useState('');
   const [texto, setTexto] = useState('');
@@ -26,20 +25,12 @@ export const PoemForm: React.FC<PoemFormProps> = ({
   useEffect(() => {
     getAvailableVoices().then((loaded) => {
       setVoices(loaded);
-      if (loaded.length > 0 && !loaded.some((v) => v.id === voz)) {
-        setVoz(loaded[0].id);
-      }
+      setVoz((current) => (loaded.some((v) => v.id === current) ? current : loaded[0]?.id ?? current));
     });
   }, []);
 
-  const getSpeedLabel = (spd: number) => {
-    if (spd < 0.95) return 'pausado';
-    if (spd > 1.05) return 'rápido';
-    return 'normal';
-  };
-
-  const handleSelectSample = (sampleIdx: number) => {
-    const s = SAMPLE_POEMS[sampleIdx];
+  const handleSelectSample = (idx: number) => {
+    const s = SAMPLE_POEMS[idx];
     if (s) {
       setTitulo(s.titulo);
       setAutor(s.autor);
@@ -49,154 +40,89 @@ export const PoemForm: React.FC<PoemFormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
-
     const errors: string[] = [];
-    if (!titulo.trim()) {
-      errors.push('Título no puede estar vacío');
-    }
-    if (texto.length > MAX_TEXT_LENGTH) {
-      errors.push(`Texto máximo ${MAX_TEXT_LENGTH} caracteres`);
-    }
-    if (velocidad < 0.8 || velocidad > 1.2) {
-      errors.push('Velocidad debe estar entre 0.8 y 1.2');
-    }
-
+    if (!titulo.trim()) errors.push('El título no puede estar vacío');
+    if (!texto.trim()) errors.push('El poema no puede estar vacío');
+    if (velocidad < 0.8 || velocidad > 1.2) errors.push('La velocidad debe estar entre 0.8 y 1.2');
     if (errors.length > 0) {
-      onError(`Errores:\n${errors.join('\n')}`);
+      onError(errors.join('\n'));
       return;
     }
-
-    onSubmit({
-      titulo: titulo.trim(),
-      autor: autor.trim() || undefined,
-      texto: texto.trim(),
-      voz,
-      velocidad,
-    });
+    onSubmit({ titulo: titulo.trim(), autor: autor.trim() || undefined, texto: texto.trim(), voz, velocidad });
   };
 
-  const charCount = texto.length;
-  const isNearLimit = charCount > MAX_TEXT_LENGTH * 0.8;
+  const nearLimit = texto.length > MAX_TEXT_LENGTH * 0.8;
 
   return (
-    <section className="poem-form">
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', flexWrap: 'wrap', gap: '8px' }}>
-        <h2>Nuevo Poema</h2>
-        <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
-          <span style={{ fontSize: '0.85em', color: 'var(--secondary-color)', fontWeight: 600 }}>
-            Ejemplos:
-          </span>
+    <section className="rise rounded-3xl border border-line bg-panel p-6 md:p-10">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <h2 className="font-serif text-3xl">Nuevo poema</h2>
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="text-sm text-muted">Probar con:</span>
           {SAMPLE_POEMS.map((sp, idx) => (
-            <button
-              key={idx}
-              type="button"
-              className="btn-secondary"
-              onClick={() => handleSelectSample(idx)}
-              title={sp.descripcion}
-            >
+            <button key={sp.titulo} type="button" className="btn btn-ghost !px-4 !py-1.5 text-sm" onClick={() => handleSelectSample(idx)} title={sp.descripcion}>
               {sp.titulo}
             </button>
           ))}
         </div>
       </div>
 
-      <form id="poemForm" className="poem-form__form" onSubmit={handleSubmit}>
-        <div className="form-group">
-          <label htmlFor="titulo">Título:</label>
-          <input
-            type="text"
-            id="titulo"
-            name="titulo"
-            required
-            placeholder="Ej: Mi Primer Poema"
-            value={titulo}
-            onChange={(e) => setTitulo(e.target.value)}
-          />
+      <form className="mt-8 space-y-6" onSubmit={handleSubmit}>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div>
+            <label className={label} htmlFor="titulo">Título</label>
+            <input className="field" type="text" id="titulo" required placeholder="Mi primer poema" value={titulo} onChange={(e) => setTitulo(e.target.value)} />
+          </div>
+          <div>
+            <label className={label} htmlFor="autor">Autor (opcional)</label>
+            <input className="field" type="text" id="autor" placeholder="Tu nombre" value={autor} onChange={(e) => setAutor(e.target.value)} />
+          </div>
         </div>
 
-        <div className="form-group">
-          <label htmlFor="autor">Autor (opcional):</label>
-          <input
-            type="text"
-            id="autor"
-            name="autor"
-            placeholder="Tu nombre"
-            value={autor}
-            onChange={(e) => setAutor(e.target.value)}
-          />
-        </div>
-
-        <div className="form-group">
-          <label htmlFor="texto">Texto del poema:</label>
+        <div>
+          <label className={label} htmlFor="texto">Texto del poema</label>
           <textarea
+            className="field min-h-48 resize-y font-serif text-lg leading-relaxed"
             id="texto"
-            name="texto"
-            rows={7}
             required
-            placeholder={'Escribe tu poema aquí...\n\nRecuerda: Usa doble salto de línea para separar estrofas.\nCada línea no vacía será un verso separado.'}
+            placeholder={'Escribe aquí.\n\nUna línea en blanco separa las estrofas; cada línea es un verso.'}
             maxLength={MAX_TEXT_LENGTH}
             value={texto}
             onChange={(e) => setTexto(e.target.value)}
           />
-          <small
-            id="textoCounter"
-            className="form-counter"
-            style={{ color: isNearLimit ? '#f44336' : 'var(--secondary-color)' }}
-          >
-            {charCount}/{MAX_TEXT_LENGTH} caracteres
+          <small className={`mt-2 block text-right text-sm ${nearLimit ? 'text-danger' : 'text-muted'}`}>
+            {texto.length}/{MAX_TEXT_LENGTH}
           </small>
         </div>
 
-        <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '16px' }}>
-          <div className="form-group">
-            <label htmlFor="velocidad">
-              Velocidad: <span style={{ fontWeight: 400 }}>({velocidad.toFixed(1)}x)</span>
+        <div className="grid gap-6 sm:grid-cols-2">
+          <div>
+            <label className={label} htmlFor="velocidad">
+              Velocidad <span className="text-paper">{velocidad.toFixed(1)}x</span>
             </label>
             <input
-              type="number"
-              id="velocidad"
-              name="velocidad"
-              min="0.8"
-              max="1.2"
-              step="0.1"
-              required
+              type="range" id="velocidad" min="0.8" max="1.2" step="0.1"
+              className="h-11 w-full accent-amber"
               value={velocidad}
-              onChange={(e) => setVelocidad(parseFloat(e.target.value) || 1.0)}
+              onChange={(e) => setVelocidad(parseFloat(e.target.value))}
             />
-            <small style={{ color: 'var(--secondary-color)', display: 'block', marginTop: '4px' }}>
-              Nivel: {getSpeedLabel(velocidad)}
-            </small>
           </div>
-
-          <div className="form-group">
-            <label htmlFor="voz">Voz:</label>
-            <select
-              id="voz"
-              name="voz"
-              required
-              value={voz}
-              onChange={(e) => setVoz(e.target.value)}
-            >
+          <div>
+            <label className={label} htmlFor="voz">Voz</label>
+            <select className="field" id="voz" value={voz} onChange={(e) => setVoz(e.target.value)}>
               {voices.length > 0 ? (
                 voices.map((v) => (
-                  <option key={v.id} value={v.id}>
-                    {v.name} - {v.language} {v.quality ? `(${v.quality})` : ''}
-                  </option>
+                  <option key={v.id} value={v.id}>{v.name} · {v.language}</option>
                 ))
               ) : (
-                <option value="es_ES-davefx-medium">Voz predeterminada (Piper)</option>
+                <option value="es_ES-davefx-medium">Voz predeterminada</option>
               )}
             </select>
           </div>
         </div>
 
-        <button
-          type="submit"
-          className="btn-primary"
-          style={{ width: '100%', marginTop: '10px' }}
-          disabled={isSubmitting}
-        >
-          {isSubmitting ? 'Creando Poema...' : '🎵 Crear Poema'}
+        <button type="submit" className="btn btn-primary w-full !py-4 text-lg" disabled={isSubmitting}>
+          <Feather size={20} aria-hidden /> {isSubmitting ? 'Creando…' : 'Crear poema'}
         </button>
       </form>
     </section>

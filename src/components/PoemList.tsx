@@ -1,4 +1,5 @@
 import React from 'react';
+import { Play, Trash2 } from 'lucide-react';
 import { Poema } from '../types/poema';
 
 interface PoemListProps {
@@ -7,104 +8,64 @@ interface PoemListProps {
   onDeletePoem: (id: number) => void;
 }
 
-export const PoemList: React.FC<PoemListProps> = ({
-  poems,
-  onSelectPoem,
-  onDeletePoem,
-}) => {
-  if (poems.length === 0) {
-    return null;
-  }
+const formatDate = (iso: string) => {
+  const d = new Date(iso);
+  return isNaN(d.getTime())
+    ? ''
+    : d.toLocaleDateString('es-ES', { day: '2-digit', month: 'short', year: 'numeric' });
+};
 
-  const formatDate = (isoString: string) => {
-    try {
-      const d = new Date(isoString);
-      return d.toLocaleDateString('es-ES', {
-        day: '2-digit',
-        month: 'short',
-        year: 'numeric',
-        hour: '2-digit',
-        minute: '2-digit',
-      });
-    } catch {
-      return '';
-    }
-  };
+export const PoemList: React.FC<PoemListProps> = ({ poems, onSelectPoem, onDeletePoem }) => {
+  if (poems.length === 0) return null;
 
   return (
-    <section style={{ marginTop: '36px', borderTop: '2px solid #f0f0f0', paddingTop: '24px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px' }}>
-        <h3 style={{ color: 'var(--secondary-color)', fontSize: '1.25rem' }}>
-          Poemas Guardados ({poems.length})
-        </h3>
-      </div>
+    <section className="mt-24 md:mt-32">
+      <h3 className="font-serif text-3xl">
+        Tu biblioteca <span className="text-muted">({poems.length})</span>
+      </h3>
 
-      <div style={{ display: 'grid', gap: '12px' }}>
-        {poems.map((poem) => (
-          <div
+      <ul className="mt-8 grid grid-flow-dense gap-4 sm:grid-cols-2">
+        {poems.map((poem, i) => (
+          <li
             key={poem.id}
-            style={{
-              padding: '16px 20px',
-              border: '1px solid #e2e8f0',
-              borderRadius: '8px',
-              backgroundColor: '#fbfcfd',
-              display: 'flex',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              gap: '12px',
-              transition: 'all 0.2s',
-            }}
+            className={`rise group relative flex flex-col justify-between overflow-hidden rounded-3xl border border-line bg-panel p-6 transition-colors duration-500 hover:border-amber/60 ${
+              // el primero ocupa todo el ancho; si el total es impar, el último también, sin huecos
+              i === 0 || (i === poems.length - 1 && poems.length % 2 === 0) ? 'sm:col-span-2' : ''
+            }`}
+            style={{ animationDelay: `${Math.min(i, 8) * 60}ms` }}
           >
-            <div
-              style={{ cursor: 'pointer', flex: 1 }}
+            <button
+              type="button"
               onClick={() => onSelectPoem(poem)}
-              title="Abrir reproductor y texto"
+              className="text-left after:absolute after:inset-0 after:content-['']"
+              aria-label={`Abrir ${poem.titulo}`}
             >
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexWrap: 'wrap' }}>
-                <strong style={{ fontSize: '1.05rem', color: '#1e293b' }}>
-                  {poem.titulo}
-                </strong>
-                <span className={`status-badge status-${poem.estado}`}>
-                  {poem.estado}
-                </span>
-              </div>
-              <div style={{ fontSize: '0.88rem', color: 'var(--secondary-color)', marginTop: '4px' }}>
-                {poem.autor ? `Por ${poem.autor}` : 'Anónimo'} • {formatDate(poem.creado_en)} • Voz: {poem.voz} ({poem.velocidad}x)
-              </div>
-            </div>
+              <span className="block font-serif text-2xl transition-transform duration-500 group-hover:translate-x-1">
+                {poem.titulo}
+              </span>
+              <span className="mt-2 block text-sm text-muted">
+                {poem.autor || 'Anónimo'} · {formatDate(poem.creado_en)}
+              </span>
+            </button>
 
-            <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+            <div className="mt-6 flex items-center justify-between">
+              <span className="inline-flex items-center gap-2 text-sm font-medium text-amber">
+                <Play size={14} aria-hidden /> {poem.velocidad}x · {poem.estado}
+              </span>
               <button
                 type="button"
-                className="btn-primary"
-                style={{ padding: '8px 14px', fontSize: '0.9rem' }}
-                onClick={() => onSelectPoem(poem)}
-                title="Reproducir poema"
-              >
-                ▶ Escuchar
-              </button>
-              <button
-                type="button"
-                className="btn-secondary"
-                style={{
-                  padding: '8px 12px',
-                  color: 'var(--error-color)',
-                  borderColor: '#ffcdd2',
+                className="relative z-10 rounded-full p-2 text-muted transition-colors hover:bg-white/5 hover:text-danger"
+                onClick={() => {
+                  if (confirm(`¿Eliminar el poema "${poem.titulo}"?`)) onDeletePoem(poem.id);
                 }}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  if (confirm(`¿Eliminar el poema "${poem.titulo}"?`)) {
-                    onDeletePoem(poem.id);
-                  }
-                }}
-                title="Eliminar poema"
+                aria-label={`Eliminar ${poem.titulo}`}
               >
-                🗑
+                <Trash2 size={18} aria-hidden />
               </button>
             </div>
-          </div>
+          </li>
         ))}
-      </div>
+      </ul>
     </section>
   );
 };
