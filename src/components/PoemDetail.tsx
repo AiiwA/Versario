@@ -1,4 +1,5 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
+import { Play, Pause, Square, Download, Trash2, Mic, Gauge, Loader2 } from 'lucide-react';
 import { Poema } from '../types/poema';
 import { parsePoemStructure } from '../utils/textProcessing';
 import { PoemSpeaker } from '../services/speechService';
@@ -12,104 +13,69 @@ interface PoemDetailProps {
   onError: (msg: string) => void;
 }
 
-export const PoemDetail: React.FC<PoemDetailProps> = ({
-  poema,
-  onBack,
-  onUpdatePoem,
-  onDeletePoem,
-  onError,
-}) => {
+export const PoemDetail: React.FC<PoemDetailProps> = ({ poema, onBack, onUpdatePoem, onDeletePoem, onError }) => {
   const [isPlaying, setIsPlaying] = useState(false);
   const [isPaused, setIsPaused] = useState(false);
   const [activeVerseIndex, setActiveVerseIndex] = useState<number | null>(null);
   const [isDownloading, setIsDownloading] = useState(false);
-  const [generationProgress, setGenerationProgress] = useState(0);
 
   const speakerRef = useRef<PoemSpeaker | null>(null);
-  const structure = parsePoemStructure(poema.texto);
+  const structure = useMemo(() => parsePoemStructure(poema.texto), [poema.texto]);
+  const preparing = poema.estado === 'generando' || poema.estado === 'pendiente';
 
-  // Simulación de pipeline de generación si el poema está en estado 'generando' o 'pendiente'
+  // Preparación simulada: pasa a 'listo' una sola vez (sin efectos dentro de setState).
   useEffect(() => {
-    if (poema.estado === 'generando' || poema.estado === 'pendiente') {
-      const interval = setInterval(() => {
-        setGenerationProgress((prev) => {
-          if (prev >= 90) {
-            clearInterval(interval);
-            onUpdatePoem(poema.id, 'listo', {
-              ruta_audio: `/audio/poema_${poema.id}.mp3`,
-            });
-            return 100;
-          }
-          return prev + 30;
-        });
-      }, 500);
+    if (!preparing) return;
+    const t = setTimeout(() => onUpdatePoem(poema.id, 'listo', { ruta_audio: `/audio/poema_${poema.id}.mp3` }), 1200);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [preparing, poema.id]);
 
-      return () => clearInterval(interval);
-    }
-  }, [poema.estado, poema.id]);
+  useEffect(() => () => speakerRef.current?.stop(), []);
 
-  // Limpiar reproductor al desmontar
-  useEffect(() => {
-    return () => {
-      if (speakerRef.current) {
-        speakerRef.current.stop();
-      }
-    };
-  }, []);
+  const getSpeaker = () => (speakerRef.current ??= new PoemSpeaker());
+
+  const resetPlayback = () => {
+    setIsPlaying(false);
+    setIsPaused(false);
+    setActiveVerseIndex(null);
+  };
 
   const handlePlay = async () => {
-    if (isPaused && speakerRef.current) {
-      speakerRef.current.resume();
+    const speaker = getSpeaker();
+    if (isPaused) {
+      speaker.resume();
       setIsPaused(false);
       setIsPlaying(true);
       return;
     }
-
-    if (!speakerRef.current) {
-      speakerRef.current = new PoemSpeaker();
-    }
-
     setIsPlaying(true);
-    setIsPaused(false);
-
-    await speakerRef.current.speakPoem(
-      poema.texto,
-      poema.voz,
-      poema.velocidad,
-      {
-        onVerseChange: (idx) => {
-          setActiveVerseIndex(idx);
-        },
-        onEnd: () => {
-          setIsPlaying(false);
-          setIsPaused(false);
-          setActiveVerseIndex(null);
-        },
-        onError: (err) => {
-          setIsPlaying(false);
-          setIsPaused(false);
-          setActiveVerseIndex(null);
-          onError(`Error al reproducir audio: ${err.message}`);
-        },
-      }
-    );
+    await speaker.speakPoem(poema.texto, poema.voz, poema.velocidad, {
+      onVerseChange: setActiveVerseIndex,
+      onEnd: resetPlayback,
+      onError: (err) => {
+        resetPlayback();
+        onError(`Error al reproducir audio: ${err.message}`);
+      },
+    });
   };
 
   const handlePause = () => {
-    if (speakerRef.current) {
-      speakerRef.current.pause();
-      setIsPaused(true);
-      setIsPlaying(false);
-    }
+    speakerRef.current?.pause();
+    setIsPaused(true);
+    setIsPlaying(false);
   };
 
   const handleStop = () => {
-    if (speakerRef.current) {
-      speakerRef.current.stop();
-      setIsPaused(false);
-      setIsPlaying(false);
-      setActiveVerseIndex(null);
-    }
+    speakerRef.current?.stop();
+    resetPlayback();
+  };
+
+  const handleVerseClick = async (text: string, globalIndex: number) => {
+    resetPlayback();
+    setActiveVerseIndex(globalIndex);
+    await getSpeaker().speakSingle(text, poema.voz, poema.velocidad);
+    setActiveVerseIndex((cur) => (cur === globalIndex ? null : cur));
   };
 
   const handleDownload = async () => {
@@ -119,191 +85,85 @@ export const PoemDetail: React.FC<PoemDetailProps> = ({
       const url = URL.createObjectURL(wavBlob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `poema_${poema.id}_${poema.titulo.toLowerCase().replace(/[^a-z0-9]/g, '_')}.wav`;
+      a.download = `poema_${poema.id}_${poema.titulo.toLowerCase().replace(/[^a-z0-9]+/g, '_')}.wav`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       setTimeout(() => URL.revokeObjectURL(url), 2000);
     } catch (err) {
-      onError(`Error al generar descarga de audio: ${err instanceof Error ? err.message : String(err)}`);
+      onError(`Error al generar la descarga: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
       setIsDownloading(false);
     }
   };
 
   return (
-    <div className="poem-detail-container">
-      <button onClick={onBack} className="back-link">
-        ← Volver
-      </button>
+    <article className="rise">
+      <h2 className="max-w-4xl font-serif text-4xl leading-tight text-balance md:text-6xl">{poema.titulo}</h2>
+      <p className="mt-4 text-lg text-muted">por {poema.autor || 'Anónimo'}</p>
 
-      <header style={{ marginBottom: '24px' }}>
-        <h1 id="poemTitle" style={{ fontSize: '2rem', color: '#1e293b', marginBottom: '8px' }}>
-          {poema.titulo}
-        </h1>
-        <p className="poem-author" style={{ color: 'var(--secondary-color)', fontSize: '1.1rem' }}>
-          por {poema.autor || 'Anónimo'}
-        </p>
-        <p className="poem-status" style={{ marginTop: '8px', fontSize: '0.95rem' }}>
-          Estado:{' '}
-          <span id="poemStatus" className={`status-badge status-${poema.estado}`}>
-            {poema.estado}
-          </span>
-        </p>
-      </header>
-
-      {poema.estado === 'generando' || poema.estado === 'pendiente' ? (
-        <div id="loadingSpinner" className="loading-spinner">
-          <div className="spinner"></div>
-          <p style={{ fontWeight: 600, color: 'var(--secondary-color)' }}>
-            Sintetizando audio para "{poema.titulo}"...
-          </p>
-          <div
-            style={{
-              width: '240px',
-              height: '8px',
-              backgroundColor: '#e2e8f0',
-              borderRadius: '4px',
-              margin: '16px auto 0',
-              overflow: 'hidden',
-            }}
-          >
-            <div
-              style={{
-                width: `${generationProgress}%`,
-                height: '100%',
-                backgroundColor: 'var(--primary-color)',
-                transition: 'width 0.4s ease',
-              }}
-            ></div>
-          </div>
-          <small style={{ color: '#888', display: 'block', marginTop: '8px' }}>
-            Uniendo fragmentos y aplicando pausas poéticas...
-          </small>
+      {preparing ? (
+        <div className="mt-16 flex items-center gap-4 text-muted" role="status">
+          <Loader2 className="animate-spin text-amber" aria-hidden />
+          Preparando "{poema.titulo}"…
         </div>
       ) : (
         <>
-          {/* Reproductor de audio */}
-          <section className="audio-player audio-player-card">
-            <div className="audio-controls">
-              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                {!isPlaying ? (
-                  <button
-                    id="playBtn"
-                    type="button"
-                    className="btn-primary"
-                    onClick={handlePlay}
-                    style={{ padding: '10px 20px', minWidth: '120px' }}
-                  >
-                    ▶ {isPaused ? 'Reanudar' : 'Reproducir'}
-                  </button>
-                ) : (
-                  <button
-                    type="button"
-                    className="btn-primary"
-                    onClick={handlePause}
-                    style={{ padding: '10px 20px', minWidth: '120px', backgroundColor: '#e65100' }}
-                  >
-                    ⏸ Pausar
-                  </button>
-                )}
-
-                {(isPlaying || isPaused) && (
-                  <button
-                    type="button"
-                    className="btn-secondary"
-                    onClick={handleStop}
-                    style={{ padding: '10px 16px' }}
-                    title="Detener lectura"
-                  >
-                    ⏹ Detener
-                  </button>
-                )}
-              </div>
-
-              <div style={{ fontSize: '0.9rem', color: 'var(--secondary-color)', display: 'flex', gap: '14px', alignItems: 'center' }}>
-                <span>🎙️ Voz: <strong>{poema.voz}</strong></span>
-                <span>⚡ Velocidad: <strong>{poema.velocidad}x</strong></span>
-              </div>
-
-              <button
-                type="button"
-                className="download-btn"
-                onClick={handleDownload}
-                disabled={isDownloading}
-                title="Descargar archivo de audio"
-              >
-                {isDownloading ? '⏳ Preparando...' : '⬇ Descargar Audio'}
+          <section className="mt-12 flex flex-wrap items-center gap-3 rounded-3xl border border-line bg-panel p-4 md:p-5" aria-label="Reproductor">
+            {isPlaying ? (
+              <button type="button" className="btn btn-primary" onClick={handlePause}>
+                <Pause size={18} aria-hidden /> Pausar
               </button>
-            </div>
-
-            {isPlaying && (
-              <div style={{ marginTop: '14px', fontSize: '0.88rem', color: '#0284c7', display: 'flex', alignItems: 'center', gap: '8px' }}>
-                <span className="spinner" style={{ width: '14px', height: '14px', borderWidth: '2px', margin: 0 }}></span>
-                <span>Recitando con pausas poéticas naturales (400ms versos / 1000ms estrofas)...</span>
-              </div>
+            ) : (
+              <button type="button" className="btn btn-primary" onClick={handlePlay}>
+                <Play size={18} aria-hidden /> {isPaused ? 'Reanudar' : 'Reproducir'}
+              </button>
             )}
-          </section>
+            {(isPlaying || isPaused) && (
+              <button type="button" className="btn btn-ghost" onClick={handleStop}>
+                <Square size={16} aria-hidden /> Detener
+              </button>
+            )}
 
-          {/* Contenido del poema */}
-          <section id="poemContent" className="poem-content">
-            <div
-              style={{
-                padding: '28px',
-                backgroundColor: '#ffffff',
-                border: '1px solid #e2e8f0',
-                borderRadius: '8px',
-                boxShadow: '0 1px 3px rgba(0,0,0,0.05)',
-              }}
-            >
-              {structure.map((stanza) => (
-                <div
-                  key={stanza.stanzaIndex}
-                  style={{
-                    marginBottom: '24px',
-                    fontFamily: 'Georgia, Cambria, serif',
-                    fontSize: '1.18rem',
-                    lineHeight: '1.9',
-                  }}
-                >
-                  {stanza.verses.map((verse) => {
-                    const isActive = activeVerseIndex === verse.globalIndex;
-                    return (
-                      <div
-                        key={verse.verseIndex}
-                        className={`poem-verse ${isActive ? 'active' : ''}`}
-                        style={{
-                          margin: '2px 0',
-                          cursor: 'pointer',
-                        }}
-                        onClick={() => {
-                          // Al hacer clic, hablar solo este verso
-                          if (speakerRef.current) speakerRef.current.stop();
-                          const utterance = new SpeechSynthesisUtterance(verse.text);
-                          utterance.rate = poema.velocidad;
-                          setActiveVerseIndex(verse.globalIndex);
-                          utterance.onend = () => setActiveVerseIndex(null);
-                          window.speechSynthesis.speak(utterance);
-                        }}
-                        title="Haz clic para escuchar este verso"
-                      >
-                        {verse.text}
-                      </div>
-                    );
-                  })}
-                </div>
-              ))}
+            <div className="flex flex-wrap items-center gap-x-5 gap-y-1 px-2 text-sm text-muted">
+              <span className="inline-flex items-center gap-2"><Mic size={16} aria-hidden /> {poema.voz}</span>
+              <span className="inline-flex items-center gap-2"><Gauge size={16} aria-hidden /> {poema.velocidad}x</span>
             </div>
-          </section>
 
-          <div style={{ marginTop: '24px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-            <span style={{ fontSize: '0.85rem', color: 'var(--secondary-color)' }}>
-              Tip: Puedes pulsar en cualquier verso para escucharlo individualmente.
-            </span>
             <button
               type="button"
-              className="btn-secondary"
-              style={{ color: 'var(--error-color)', borderColor: '#ffcdd2' }}
+              className="btn btn-ghost sm:ml-auto"
+              onClick={handleDownload}
+              disabled={isDownloading}
+              title="Genera un WAV con la duración y los silencios del poema; la voz del navegador no se puede grabar"
+            >
+              <Download size={18} aria-hidden /> {isDownloading ? 'Preparando…' : 'Descargar guía WAV'}
+            </button>
+          </section>
+
+          <section className="mt-12 max-w-3xl font-serif text-2xl leading-relaxed md:text-3xl md:leading-[1.6]" aria-live="off">
+            {structure.map((stanza) => (
+              <div key={stanza.stanzaIndex} className="mb-10">
+                {stanza.verses.map((verse) => (
+                  <button
+                    type="button"
+                    key={verse.globalIndex}
+                    className={`verse block w-full text-left ${activeVerseIndex === verse.globalIndex ? 'active' : ''}`}
+                    onClick={() => handleVerseClick(verse.text, verse.globalIndex)}
+                    title="Escuchar este verso"
+                  >
+                    {verse.text}
+                  </button>
+                ))}
+              </div>
+            ))}
+          </section>
+
+          <div className="mt-12 flex flex-wrap items-center justify-between gap-4 border-t border-line pt-6">
+            <span className="text-sm text-muted">Toca cualquier verso para escucharlo solo.</span>
+            <button
+              type="button"
+              className="btn btn-ghost !text-danger"
               onClick={() => {
                 if (confirm(`¿Seguro que deseas eliminar el poema "${poema.titulo}"?`)) {
                   onDeletePoem(poema.id);
@@ -311,11 +171,11 @@ export const PoemDetail: React.FC<PoemDetailProps> = ({
                 }
               }}
             >
-              🗑 Eliminar Poema
+              <Trash2 size={16} aria-hidden /> Eliminar poema
             </button>
           </div>
         </>
       )}
-    </div>
+    </article>
   );
 };

@@ -59,13 +59,13 @@ export const App: React.FC = () => {
   const selectedPoem = selectedPoemId !== null ? getPoemById(selectedPoemId) : null;
 
   return (
-    <div className="container">
+    <div className="mx-auto w-full max-w-5xl overflow-x-hidden px-5 py-10 md:px-8 md:py-16">
       <Header
         showBack={selectedPoemId !== null}
         onGoHome={() => setSelectedPoemId(null)}
       />
 
-      <main className="app-main">
+      <main>
         {selectedPoem ? (
           <PoemDetail
             poema={selectedPoem}

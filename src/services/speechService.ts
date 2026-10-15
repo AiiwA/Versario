@@ -81,9 +81,19 @@ export interface PlaybackCallbacks {
 }
 
 export class PoemSpeaker {
-  private isCancelled = false;
+  // Cada lectura nueva incrementa runId; los bucles viejos se detectan y terminan solos.
+  private runId = 0;
   private isPaused = false;
   private pauseResolver: (() => void) | null = null;
+
+  private pickVoice(voiceId: string): SpeechSynthesisVoice | undefined {
+    const available = window.speechSynthesis.getVoices();
+    return (
+      available.find((v) => v.voiceURI === voiceId || v.name === voiceId) ||
+      available.find((v) => v.lang.startsWith('es')) ||
+      available[0]
+    );
+  }
 
   async speakPoem(
     texto: string,
@@ -91,105 +101,77 @@ export class PoemSpeaker {
     speed: number,
     callbacks: PlaybackCallbacks
   ): Promise<void> {
-    this.isCancelled = false;
-    this.isPaused = false;
-
     if (typeof window === 'undefined' || !('speechSynthesis' in window)) {
       callbacks.onError?.(new Error('La síntesis de voz no está soportada en este navegador.'));
       return;
     }
 
-    window.speechSynthesis.cancel();
+    this.stop();
+    const myRun = this.runId;
+    const alive = () => this.runId === myRun;
 
-    // Seleccionar voz del navegador si coincide
-    const available = window.speechSynthesis.getVoices();
-    let selectedVoice = available.find(
-      (v) => v.voiceURI === voiceId || v.name === voiceId
-    );
-
-    if (!selectedVoice) {
-      // Buscar primera voz en español
-      selectedVoice = available.find((v) => v.lang.startsWith('es')) || available[0];
-    }
-
+    const voice = this.pickVoice(voiceId);
     const structure = parsePoemStructure(texto);
 
     try {
-      for (let sIdx = 0; sIdx < structure.length; sIdx++) {
-        if (this.isCancelled) break;
+      for (let sIdx = 0; sIdx < structure.length && alive(); sIdx++) {
         const stanza = structure[sIdx];
 
-        for (let vIdx = 0; vIdx < stanza.verses.length; vIdx++) {
-          if (this.isCancelled) break;
+        for (let vIdx = 0; vIdx < stanza.verses.length && alive(); vIdx++) {
           const verse = stanza.verses[vIdx];
 
-          await this.checkPause();
-          if (this.isCancelled) break;
+          await this.checkPause(alive);
+          if (!alive()) break;
 
           callbacks.onVerseChange?.(verse.globalIndex);
+          await this.speakVerse(verse.text, voice, speed, alive);
+          if (!alive()) break;
 
-          await this.speakVerse(verse.text, selectedVoice, speed);
-
-          if (this.isCancelled) break;
-
-          // Pausa entre versos: 400ms (regla de Versario)
-          // Si es el último verso de la estrofa y hay más estrofas, pausa de 1000ms
-          const isLastVerseInStanza = vIdx === stanza.verses.length - 1;
+          // 400 ms entre versos, 1000 ms entre estrofas
+          const isLastVerse = vIdx === stanza.verses.length - 1;
           const isLastStanza = sIdx === structure.length - 1;
-
-          if (!isLastVerseInStanza) {
-            await this.sleep(400);
-          } else if (!isLastStanza) {
-            // Pausa entre estrofas: 1000ms (regla de Versario)
-            await this.sleep(1000);
-          }
+          if (!isLastVerse) await this.sleep(400, alive);
+          else if (!isLastStanza) await this.sleep(1000, alive);
         }
       }
 
-      callbacks.onVerseChange?.(null);
-      if (!this.isCancelled) {
+      if (alive()) {
+        callbacks.onVerseChange?.(null);
         callbacks.onEnd?.();
       }
     } catch (err) {
-      callbacks.onVerseChange?.(null);
-      callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+      if (alive()) {
+        callbacks.onVerseChange?.(null);
+        callbacks.onError?.(err instanceof Error ? err : new Error(String(err)));
+      }
     }
+  }
+
+  /** Lee un solo verso, cancelando cualquier lectura en curso. */
+  async speakSingle(text: string, voiceId: string, speed: number): Promise<void> {
+    if (typeof window === 'undefined' || !('speechSynthesis' in window)) return;
+    this.stop();
+    const myRun = this.runId;
+    await this.speakVerse(text, this.pickVoice(voiceId), speed, () => this.runId === myRun).catch(() => {});
   }
 
   private speakVerse(
     text: string,
     voice: SpeechSynthesisVoice | undefined,
-    speed: number
+    speed: number,
+    alive: () => boolean
   ): Promise<void> {
     return new Promise((resolve, reject) => {
-      if (this.isCancelled) {
-        resolve();
-        return;
-      }
+      if (!alive()) return resolve();
 
       const utterance = new SpeechSynthesisUtterance(text);
-      if (voice) {
-        utterance.voice = voice;
-      }
+      if (voice) utterance.voice = voice;
       utterance.lang = voice?.lang || 'es-ES';
       utterance.rate = Math.max(0.5, Math.min(2.0, speed));
-      utterance.pitch = 1.0;
-
-      utterance.onend = () => {
-        resolve();
-      };
-
+      utterance.onend = () => resolve();
       utterance.onerror = (e) => {
-        if (this.isCancelled) {
-          resolve();
-        } else {
-          // Algunos navegadores lanzan 'interrupted' al cancelar
-          if (e.error === 'interrupted' || e.error === 'canceled') {
-            resolve();
-          } else {
-            reject(new Error(`Error de síntesis: ${e.error}`));
-          }
-        }
+        if (!alive() || e.error === 'interrupted' || e.error === 'canceled') resolve();
+        else reject(new Error(`Error de síntesis: ${e.error}`));
       };
 
       window.speechSynthesis.speak(utterance);
@@ -204,39 +186,36 @@ export class PoemSpeaker {
   resume() {
     this.isPaused = false;
     window.speechSynthesis.resume();
-    if (this.pauseResolver) {
-      this.pauseResolver();
-      this.pauseResolver = null;
-    }
+    this.pauseResolver?.();
+    this.pauseResolver = null;
   }
 
   stop() {
-    this.isCancelled = true;
+    this.runId++;
     this.isPaused = false;
-    if (this.pauseResolver) {
-      this.pauseResolver();
-      this.pauseResolver = null;
-    }
+    this.pauseResolver?.();
+    this.pauseResolver = null;
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
   }
 
-  private async checkPause() {
-    while (this.isPaused && !this.isCancelled) {
+  private async checkPause(alive: () => boolean) {
+    while (this.isPaused && alive()) {
       await new Promise<void>((resolve) => {
         this.pauseResolver = resolve;
       });
     }
   }
 
-  private sleep(ms: number): Promise<void> {
-    return new Promise((resolve) => {
-      const timer = setTimeout(resolve, ms);
-      if (this.isCancelled) {
-        clearTimeout(timer);
-        resolve();
-      }
-    });
+  // La pausa también congela los silencios poéticos, no solo la voz.
+  private async sleep(ms: number, alive: () => boolean) {
+    let remaining = ms;
+    while (remaining > 0 && alive()) {
+      await this.checkPause(alive);
+      const step = Math.min(50, remaining);
+      await new Promise((r) => setTimeout(r, step));
+      remaining -= step;
+    }
   }
 }

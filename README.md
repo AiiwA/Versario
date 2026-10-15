@@ -9,7 +9,7 @@ Versario convierte poemas escritos en texto a audio con síntesis de voz, aplica
   - 400 ms de pausa entre versos consecutivos.
   - 1000 ms de pausa entre estrofas (separadas por doble salto de línea `\n\n`).
 - 🎨 **Resaltado interactivo en tiempo real**: Los versos se iluminan a medida que son recitados y se puede hacer clic en cualquier verso para escucharlo individualmente.
-- 💾 **Descarga de audio**: Exportación directa de archivos de audio estructurados (`.wav`).
+- 💾 **Descarga de audio**: Descarga de una guía `.wav` con la duración y los silencios del poema (la voz del navegador no se puede grabar, por lo que el archivo contiene tonos de referencia, no voz).
 - 📚 **Biblioteca local de poemas**: Persistencia en almacenamiento local (`localStorage`) para consultar, reproducir y gestionar los poemas creados.
 - 📖 **Poemas de ejemplo integrados**: Botones de inserción rápida para *Soneto del Alba* (R.L. Stevenson), *La Cenicienta* y *El Viaje*.
 - 💎 **Diseño fiel y accesible**: Conserva fielmente la paleta visual, estilos y estructura original de Versario con React, TypeScript y Tailwind CSS.
@@ -48,7 +48,7 @@ npm run lint
 
 2. **Reproducción y Descarga**:
    - Pulsa **"▶ Reproducir"** para escuchar la declamación con pausas poéticas y seguimiento visual.
-   - Pulsa **"⬇ Descargar Audio"** para obtener el archivo de audio.
+   - Pulsa **"Descargar guía WAV"** para obtener la guía de tiempos.
    - Pulsa **"← Volver"** para regresar a la lista de poemas y crear nuevos textos.
 
 ## 🛠️ Tecnologías
